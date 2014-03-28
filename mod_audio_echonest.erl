@@ -34,9 +34,12 @@ identify(Id, Props, Context) ->
 
     spawn(fun() ->
                   timer:sleep(1000),
-                  z_session_manager:broadcast(#broadcast{type="info", message="Audio analysis in progress, please wait.", title="Echonest"}, z_acl:sudo(Context))
+                  case z_acl:is_admin(Context) of
+                      true -> z_session_manager:broadcast(#broadcast{type="info", message="Audio analysis in progress, please wait.", title="Echonest"}, z_acl:sudo(Context));
+                      false -> nop
+                  end
           end),
-    
+
     %% Upload file to EchoNest for Audio analysis
     %% curl -X POST "http://developer.echonest.com/api/v4/track/upload" -d "api_key=FILDTEOIK2HBORODV&url=http://example.com/audio.mp3"
     UploadUrl = ?UPLOAD_URL ++ "?api_key=" ++ mochiweb_util:quote_plus(api_key(Context)) ++ "&filetype=mp3",
@@ -50,7 +53,7 @@ identify(Id, Props, Context) ->
             TrackId = proplists:get_value(<<"id">>, Track),
 
             %% Get deep audio information from the Echonest API
-            %e.g. http://developer.echonest.com/api/v4/track/profile?api_key=FILDTEOIK2HBORODV&format=json&id=TRGOVKX128F7FA5920&bucket=audio_summary
+                                                %e.g. http://developer.echonest.com/api/v4/track/profile?api_key=FILDTEOIK2HBORODV&format=json&id=TRGOVKX128F7FA5920&bucket=audio_summary
 
             TrackUrl = ?TRACK_PROFILE_URL ++ "?api_key=" ++ mochiweb_util:quote_plus(api_key(Context))
                 ++ "&format=json&bucket=audio_summary&id=" ++ mochiweb_util:quote_plus(z_convert:to_list(TrackId)),
@@ -62,21 +65,30 @@ identify(Id, Props, Context) ->
 
                     case get_rsc_title(FullTrack) of
                         undefined ->
-                            z_session_manager:broadcast(#broadcast{type="info", message="Audio analysis done, could not identify track.", title="Echonest"}, z_acl:sudo(Context)),
+                            case z_acl:is_admin(Context) of
+                                true -> z_session_manager:broadcast(#broadcast{type="info", message="Audio analysis done, could not identify track.", title="Echonest"}, z_acl:sudo(Context));
+                                false -> nop
+                            end,
                             m_rsc:update(Id, [{echonest_info, {struct, FullTrack}}], Context);
                         Title ->
                             ?zInfo("Audio file information added for " ++ Title, Context),
-                            z_session_manager:broadcast(#broadcast{type="info", message="Audio analysis done, found track: " ++ Title, title="Echonest"}, z_acl:sudo(Context)),
+                            case z_acl:is_admin(Context) of
+                                true -> z_session_manager:broadcast(#broadcast{type="info", message="Audio analysis done, found track: " ++ Title, title="Echonest"}, z_acl:sudo(Context));
+                                false -> nop end,
                             m_rsc:update(Id, [{title, Title}, {echonest_info, {struct, FullTrack}}], Context)
                     end;
-                
+
                 R ->
-                    z_session_manager:broadcast(#broadcast{type="error", message="Audio analysis API failure.", title="Echonest"}, z_acl:sudo(Context)),
+                    case z_acl:is_admin(Context) of
+                        true -> z_session_manager:broadcast(#broadcast{type="error", message="Audio analysis API failure.", title="Echonest"}, z_acl:sudo(Context));
+                        false -> nop end,
                     lager:warning("error: ~p", [R])
             end;
 
         R ->
-            z_session_manager:broadcast(#broadcast{type="error", message="Audio analysis API failure.", title="Echonest"}, z_acl:sudo(Context)),
+            case z_acl:is_admin(Context) of
+                true -> z_session_manager:broadcast(#broadcast{type="error", message="Audio analysis API failure.", title="Echonest"}, z_acl:sudo(Context));
+                false -> nop end,
             lager:warning("error: ~p", [R]),
             error
     end.
@@ -99,7 +111,7 @@ get_track({struct, APIResponse}) ->
     {struct, Response} = proplists:get_value(<<"response">>, APIResponse),
     {struct, Track} = proplists:get_value(<<"track">>, Response),
     Track.
-    
+
 
 api_key(Context) ->
     z_convert:to_list(m_config:get_value(?MODULE, api_key, Context)).
